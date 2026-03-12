@@ -162,5 +162,8 @@ web_*.png
 # Test images (optional, remove if you want to track them)
 test_images/
 
+# Test output
+test_output/
+
 # Ruff cache
 .ruff_cache/
