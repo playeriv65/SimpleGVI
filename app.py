@@ -50,6 +50,74 @@ def inject_apple_styles():
     except Exception as e:
         logger.warning(f"样式加载失败：{e}")
 
+    # 强制单页显示 - 限制图片高度和紧凑布局
+    st.markdown(
+        """
+    <style>
+    /* 限制图片最大高度，防止撑大页面 */
+    .stImage img {
+        max-height: 320px !important;
+        object-fit: contain !important;
+        width: 100% !important;
+    }
+    
+    /* 图片容器固定高度 */
+    .stImage {
+        max-height: 360px !important;
+        overflow: hidden !important;
+    }
+    
+    /* 紧凑布局 - 减少标题和元素间距 */
+    .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+    
+    /* 减少列间距 */
+    .stColumns {
+        gap: 0.25rem !important;
+    }
+    
+    /* 限制右侧面板整体高度 */
+    .main .block-container {
+        max-height: 100vh;
+        overflow: hidden;
+    }
+    
+    /* 紧凑的标题和说明文字 */
+    .stMarkdown p {
+        margin-bottom: 0.25rem !important;
+    }
+    
+    /* 紧凑的 slider */
+    .stSlider {
+        min-height: 2rem !important;
+    }
+    
+    /* 减少 caption 间距 */
+    .stCaption {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        font-size: 11px !important;
+        line-height: 1 !important;
+    }
+    
+    /* 隐藏 Streamlit 默认元素 */
+    header {visibility: hidden;}
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stToolbar {display: none;}
+    
+    /* 紧凑的按钮 */
+    .stButton > button {
+        padding: 0.25rem 0.5rem !important;
+        margin: 0.125rem 0 !important;
+    }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
 
 inject_apple_styles()
 
@@ -267,9 +335,7 @@ def render_unified_interface(processor, model):
     left_col, right_col = st.columns([1, 3], gap="small")
 
     with left_col:
-        st.markdown("**图像**")
-
-        # 上传 + 全景选项（紧凑布局）
+        # 紧凑上传区
         uploaded_files = st.file_uploader(
             "上传",
             type=["jpg", "jpeg", "png", "bmp", "tif", "tiff"],
@@ -280,7 +346,6 @@ def render_unified_interface(processor, model):
 
         # 自动处理：检测到新上传文件就立即处理
         if uploaded_files and len(uploaded_files) > 0:
-            # 检测是否为新文件（通过文件名+大小比较）
             current_files = [(f.name, len(f.getvalue())) for f in uploaded_files]
             prev_files = [
                 (r["文件名"], r.get("文件大小", 0))
@@ -297,7 +362,7 @@ def render_unified_interface(processor, model):
                     st.session_state.selected_index = 0
                     st.rerun()
 
-        # 显示结果列表（合并到上传区下方）
+        # 显示结果列表
         if st.session_state.all_results:
             success_count = len(
                 [r for r in st.session_state.all_results if r["状态"] == "✅"]
@@ -305,7 +370,6 @@ def render_unified_interface(processor, model):
             st.caption(f"{success_count}/{len(st.session_state.all_results)} 成功")
 
             for idx, result in enumerate(st.session_state.all_results):
-                # 截断文件名并消毒（防止XSS）
                 name = sanitize_filename(result["文件名"])
                 display_name = (
                     name[:FILENAME_DISPLAY_LENGTH_SIDEBAR] + "..."
@@ -318,7 +382,6 @@ def render_unified_interface(processor, model):
                 else:
                     label = f"{display_name} · ❌"
 
-                # 选中项用不同样式
                 is_selected = st.session_state.selected_index == idx
                 btn_type = "primary" if is_selected else "secondary"
 
@@ -328,7 +391,7 @@ def render_unified_interface(processor, model):
                     st.session_state.selected_index = idx
                     st.rerun()
 
-            # 下载按钮（紧凑显示）
+            # 下载按钮
             if success_count > 0:
                 df = pd.DataFrame(
                     [
@@ -343,12 +406,10 @@ def render_unified_interface(processor, model):
                 )
                 csv = df.to_csv(index=False).encode("utf-8-sig")
                 st.download_button(
-                    "📥 导出CSV", csv, "gvi.csv", use_container_width=True
+                    "📥 导出 CSV", csv, "gvi.csv", use_container_width=True
                 )
 
     with right_col:
-        st.markdown("**结果**")
-
         if not st.session_state.all_results:
             st.info("上传图像开始分析")
             return
@@ -371,54 +432,38 @@ def render_unified_interface(processor, model):
         img_data = st.session_state.all_images[filename]
         gvi = img_data["gvi"]
 
-        # 更新会话状态中的尺寸信息
+        # 更新尺寸信息
         st.session_state.original_size = img_data.get("original_size", (0, 0))
         st.session_state.processed_size = img_data.get("processed_size", (0, 0))
 
-        # 结果概览（紧凑单行布局）
-        c1, c2, c3, c4 = st.columns([1.5, 1, 2, 1.5])
-        with c1:
+        # 一行布局：植被占比 + 叠加透明度滑块
+        info_cols = st.columns([1, 3])
+        with info_cols[0]:
             st.markdown(
-                f"<span style='font-size:24px;font-weight:700;'>{gvi * 100:.1f}%</span>",
+                f"<div style='font-size:28px;font-weight:700;color:#1D1D1F;line-height:1;'>{gvi * 100:.1f}%</div>",
                 unsafe_allow_html=True,
             )
-            st.caption("植被")
-        with c2:
-            level = "优秀" if gvi >= 0.3 else "良好" if gvi >= 0.15 else "较低"
-            color = "#34C759" if gvi >= 0.3 else "#FF9500" if gvi >= 0.15 else "#FF3B30"
+            st.caption("植被占比")
+        with info_cols[1]:
             st.markdown(
-                f"<span style='font-size:16px;color:{color};'>{level}</span>",
+                "<div style='font-size:11px;color:#666;margin-bottom:4px;line-height:1;'>叠加透明度</div>",
                 unsafe_allow_html=True,
             )
-            st.caption("等级")
-        with c3:
-            safe_filename = sanitize_filename(filename)
-            short_name = (
-                safe_filename[:FILENAME_DISPLAY_LENGTH_MAIN] + "..."
-                if len(safe_filename) > FILENAME_DISPLAY_LENGTH_MAIN
-                else safe_filename
-            )
-            st.markdown(
-                f"<span style='font-size:13px;color:#666;'>{short_name}</span>",
-                unsafe_allow_html=True,
-            )
-            st.caption(f"{current_idx + 1} / {len(st.session_state.all_results)}")
-        with c4:
             opacity = st.slider(
                 "透明度",
                 0.0,
                 1.0,
                 st.session_state.opacity,
-                0.1,
+                0.05,
                 label_visibility="collapsed",
+                key="opacity_slider",
             )
             st.session_state.opacity = opacity
 
-        # 图像显示（限制高度防止滚动）
+        # 图像显示（固定高度，三列紧凑布局）
         blended = blend_images(img_data["original"], img_data["segmentation"], opacity)
 
-        # 使用固定高度容器
-        img_cols = st.columns(3)
+        img_cols = st.columns(3, gap="small")
         with img_cols[0]:
             st.image(img_data["original"], caption="原图", use_container_width=True)
         with img_cols[1]:
@@ -428,17 +473,21 @@ def render_unified_interface(processor, model):
         with img_cols[2]:
             st.image(img_data["segmentation"], caption="分割", use_container_width=True)
 
-        # 导航（如果有多张）
+        # 导航按钮（如果有多张）
         if len(st.session_state.all_results) > 1:
-            nav_cols = st.columns([1, 1])
+            nav_cols = st.columns(2, gap="small")
             with nav_cols[0]:
                 if current_idx > 0:
-                    if st.button("← 上一个", use_container_width=True):
+                    if st.button(
+                        "← 上一个", use_container_width=True, key=f"prev_{current_idx}"
+                    ):
                         st.session_state.selected_index -= 1
                         st.rerun()
             with nav_cols[1]:
                 if current_idx < len(st.session_state.all_results) - 1:
-                    if st.button("下一个 →", use_container_width=True):
+                    if st.button(
+                        "下一个 →", use_container_width=True, key=f"next_{current_idx}"
+                    ):
                         st.session_state.selected_index += 1
                         st.rerun()
 
@@ -446,25 +495,33 @@ def render_unified_interface(processor, model):
 def main():
     init_session_state()
 
-    c1, c2, c3 = st.columns([1, 3, 1])
-    with c1:
-        st.markdown(
-            "<span style='font-size:20px;font-weight:600;'>🌿 SimpleGVI</span>",
-            unsafe_allow_html=True,
-        )
-    with c2:
-        pass
-    with c3:
-        status_color = "#34C759" if st.session_state.model_loaded else "#FF9500"
-        status_text = "✅ 就绪" if st.session_state.model_loaded else "⏳ 加载中"
-        st.markdown(
-            "<span style='font-size:13px;color:"
-            + status_color
-            + ";'>"
-            + status_text
-            + "</span>",
-            unsafe_allow_html=True,
-        )
+    # 顶部栏：Logo + 模型状态
+    st.markdown(
+        """
+    <style>
+    header {visibility: hidden;}
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stToolbar {display: none;}
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    status_color = "#34C759" if st.session_state.model_loaded else "#FF9500"
+    status_text = "模型就绪" if st.session_state.model_loaded else "加载中"
+
+    st.markdown(
+        f"""
+    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;'>
+        <div style='display: flex; align-items: center; gap: 16px;'>
+            <span style='font-size:18px;font-weight:600;'>🌿 SimpleGVI</span>
+            <span style='font-size:13px;color:{status_color};'>{status_text}</span>
+        </div>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
 
     if not st.session_state.model_loaded:
         render_loading_animation()

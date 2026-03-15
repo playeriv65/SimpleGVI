@@ -167,3 +167,7 @@ test_output/
 
 # Ruff cache
 .ruff_cache/
+
+# Test and cache directories
+.pytest_cache/
+__pycache__/

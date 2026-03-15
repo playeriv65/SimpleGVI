@@ -5,11 +5,11 @@ from modules.gvi_calculator import process_image, get_models
 
 def main():
     """
-    计算图像的绿视指数(Green View Index, GVI)
+    计算图像的绿视指数 (Green View Index, GVI)
     """
     # 解析命令行参数
     parser = argparse.ArgumentParser(
-        description="计算图像的绿视指数(Green View Index, GVI)"
+        description="计算图像的绿视指数 (Green View Index, GVI)"
     )
     parser.add_argument("image_path", help="输入图像的路径")
     parser.add_argument(
@@ -31,22 +31,22 @@ def main():
     print("加载语义分割模型...")
     processor, model = get_models()
 
-    # 处理图像并计算GVI
-    print(f"处理图像: {args.image_path}")
+    # 处理图像并计算 GVI
+    print(f"处理图像：{args.image_path}")
     image_name = os.path.basename(args.image_path).split(".")[0]
-    gvi, segmented_image = process_image(
+    gvi, segmentation, processed_image = process_image(
         args.image_path, args.is_panoramic, processor, model
     )
 
-    # 输出GVI结果
-    print(f"绿视指数(GVI): {gvi:.4f}")
+    # 输出 GVI 结果
+    print(f"绿视指数 (GVI): {gvi:.4f}")
 
     # 保存结果
     with open(
         os.path.join(args.output_dir, f"{image_name}_result.txt"), "w", encoding="utf-8"
     ) as f:
-        f.write(f"图像: {args.image_path}\n")
-        f.write(f"绿视指数(GVI): {gvi:.4f}\n")
+        f.write(f"图像：{args.image_path}\n")
+        f.write(f"绿视指数 (GVI): {gvi:.4f}\n")
 
     # 如果需要，保存分割图像
     if args.save_segmentation:
@@ -54,12 +54,12 @@ def main():
 
         save_segmentation_visualization(
             args.image_path,
-            segmented_image,
+            segmentation,
             gvi,
             os.path.join(args.output_dir, f"{image_name}_segmentation.png"),
         )
         print(
-            f"分割可视化结果已保存到: {os.path.join(args.output_dir, f'{image_name}_segmentation.png')}"
+            f"分割可视化结果已保存到：{os.path.join(args.output_dir, f'{image_name}_segmentation.png')}"
         )
 
     print("处理完成!")

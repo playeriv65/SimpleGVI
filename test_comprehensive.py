@@ -260,8 +260,10 @@ class TestIntegration:
             print("✓ 模型加载成功")
 
             # 2. 处理图像
-            gvi, segmentation = process_image(test_image, False, processor, model)
-            print(f"✓ 图像处理成功, GVI: {gvi:.4f}")
+            gvi, segmentation, processed_image = process_image(
+                test_image, False, processor, model
+            )
+            print(f"✓ 图像处理成功，GVI: {gvi:.4f}")
 
             # 3. 保存可视化
             save_segmentation_visualization(test_image, segmentation, gvi, output_path)
