@@ -46,8 +46,8 @@ class TestConfiguration:
         for color in colors:
             assert len(color) == 3
             assert all(0 <= c <= 255 for c in color)
-            # 所有颜色都应该是绿色系 (R=0)
-            assert color[0] == 0
+            # 颜色应该是高对比度彩色，不是单一色调
+            # 允许各种颜色组合
 
     def test_is_vegetation_class(self):
         """测试植被类别判断函数"""
@@ -225,17 +225,19 @@ class TestLegendDisplay:
         assert len(colors) == 5
         print(f"✓ 图例项目: {names}")
 
-    def test_legend_colors_green(self):
-        """测试图例颜色都是绿色系"""
+    def test_legend_colors_contrast(self):
+        """测试图例颜色是高对比度彩色"""
         from config.settings import get_vegetation_colors
 
         colors = get_vegetation_colors()
 
+        # 验证5种颜色是不同的（高对比度）
+        color_set = set(tuple(c) for c in colors)
+        assert len(color_set) == 5, "5种植被类别应该有5种不同颜色"
+        
+        # 验证颜色值在有效范围内
         for i, color in enumerate(colors):
-            # R 通道应该是 0 (绿色系)
-            assert color[0] == 0, f"第 {i} 个颜色不是绿色系"
-            # G 通道应该较高
-            assert color[1] >= 100, f"第 {i} 个颜色 G 通道太低"
+            assert all(0 <= c <= 255 for c in color), f"颜色 {i} 值超出范围"
             print(f"✓ 颜色 {i}: RGB{color}")
 
 

@@ -6,6 +6,7 @@ try:
         ADE20K_CLASS_INFO,
         get_vegetation_colors,
         VEGETATION_COLORS,
+        INACTIVE_VEGETATION_COLOR,
     )
 except ImportError:
     ADE20K_CLASS_INFO = {
@@ -87,11 +88,11 @@ except ImportError:
 
     def get_vegetation_colors():
         return [
-            [0, 150, 0],
-            [0, 200, 0],
-            [0, 170, 0],
-            [0, 180, 0],
-            [0, 160, 0],
+            [220, 53, 69],
+            [0, 123, 255],
+            [255, 193, 7],
+            [111, 66, 193],
+            [253, 126, 20],
         ]
 
 
@@ -118,21 +119,29 @@ def get_ade20k_color_palette():
     return palette[:150]
 
 
-def convert_to_vegetation_visualization(segmentation):
+def convert_to_vegetation_visualization(segmentation, selected_classes=None):
     h, w = segmentation.shape
     rgb = np.zeros((h, w, 3), dtype=np.uint8)
     vegetation_colors_list = get_vegetation_colors()
     vegetation_color_map = {}
-    for i, veg_id in enumerate(sorted(list(ADE20K_VEGETATION_CLASSES))):
+    sorted_veg_ids = sorted(list(ADE20K_VEGETATION_CLASSES))
+    for i, veg_id in enumerate(sorted_veg_ids):
         vegetation_color_map[veg_id] = vegetation_colors_list[
             i % len(vegetation_colors_list)
         ]
+
+    if selected_classes is None:
+        selected_classes = set(ADE20K_VEGETATION_CLASSES)
+
     for class_id in range(min(150, len(get_ade20k_color_palette()))):
         mask = segmentation == class_id
         if mask.any():
             if class_id in ADE20K_VEGETATION_CLASSES:
-                color = vegetation_color_map[class_id]
-                rgb[mask] = color
+                if class_id in selected_classes:
+                    color = vegetation_color_map[class_id]
+                    rgb[mask] = color
+                else:
+                    rgb[mask] = INACTIVE_VEGETATION_COLOR
             else:
                 if class_id < len(get_ade20k_color_palette()):
                     color = get_ade20k_color_palette()[class_id]

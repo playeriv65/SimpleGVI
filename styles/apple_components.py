@@ -788,6 +788,39 @@ p {
   box-shadow: var(--apple-shadow-modal);
   padding: var(--apple-space-md);
 }
+
+/* --------------------------------------------
+   LEGEND COMPONENTS
+   -------------------------------------------- */
+
+/* Legend label */
+.legend-label {
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+  margin-bottom: 4px;
+  line-height: 1;
+}
+
+/* Legend item container */
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Legend color swatch */
+.legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+/* Legend text */
+.legend-text {
+  font-size: 12px;
+  color: var(--apple-text-primary);
+}
 """
 
 APPLE_COMPONENTS_CSS = APPLE_DESIGN_TOKENS + _COMPONENT_CSS

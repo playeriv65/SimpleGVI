@@ -171,3 +171,5 @@ test_output/
 # Test and cache directories
 .pytest_cache/
 __pycache__/
+inputs/
+test/

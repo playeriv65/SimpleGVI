@@ -12,7 +12,9 @@ from PIL import Image, ImageOps
 import numpy as np
 from modules.gvi_calculator import process_image
 from modules.visualization import segmentation_to_color
+from config.settings import ADE20K_CLASS_INFO, ADE20K_VEGETATION_CLASSES
 import html
+from functools import lru_cache
 
 MAX_UPLOAD_SIZE_MB = 50
 MAX_BATCH_FILES = 20
@@ -20,6 +22,11 @@ MODEL_CACHE_MAX_SIZE = 10
 FILENAME_DISPLAY_LENGTH_SIDEBAR = 12  # For left panel list
 FILENAME_DISPLAY_LENGTH_MAIN = 15  # For right panel header
 MAX_ERROR_LENGTH = 50  # For error message truncation
+
+
+def cached_segmentation_to_color(segmentation, selected_classes):
+    """直接调用可视化函数，不使用缓存（因为torch.Tensor无法哈希）"""
+    return segmentation_to_color(segmentation, selected_classes)
 
 
 def sanitize_filename(filename):
@@ -144,6 +151,7 @@ def init_session_state():
         "selected_index": 0,
         "uploaded_files": [],
         "is_panoramic": False,
+        "selected_vegetation_classes": {4, 9, 17, 66, 72},
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -210,7 +218,9 @@ def process_all_uploaded_images(uploaded_files, is_panoramic, processor, model):
                 gvi, segmentation, processed_image = process_image(
                     tmp_path, is_panoramic, processor, model
                 )
-                segmentation_rgb = segmentation_to_color(segmentation)
+                segmentation_rgb = segmentation_to_color(
+                    segmentation, st.session_state.selected_vegetation_classes
+                )
 
                 # Get processed size
                 processed_size = processed_image.size
@@ -218,6 +228,7 @@ def process_all_uploaded_images(uploaded_files, is_panoramic, processor, model):
                 images_cache[uploaded_file.name] = {
                     "original": processed_image,
                     "segmentation": segmentation_rgb,
+                    "segmentation_raw": segmentation,
                     "gvi": gvi,
                     "original_size": original_size,
                     "processed_size": processed_size,
@@ -460,8 +471,50 @@ def render_unified_interface(processor, model):
             )
             st.session_state.opacity = opacity
 
+        st.markdown(
+            "<div class='legend-label'>植被类别</div>",
+            unsafe_allow_html=True,
+        )
+
+        legend_cols = st.columns(5, gap="small")
+        sorted_veg_ids = sorted(list(ADE20K_VEGETATION_CLASSES))
+        for i, veg_id in enumerate(sorted_veg_ids):
+            class_info = ADE20K_CLASS_INFO.get(veg_id, {"name": "unknown", "color": [128, 128, 128]})
+            class_name = class_info["name"]
+            color = class_info["color"]
+            color_hex = f"#{color[0]:02x}{color[1]:02x}{color[2]:02x}"
+
+            with legend_cols[i]:
+                is_selected = veg_id in st.session_state.selected_vegetation_classes
+                checkbox_key = f"veg_checkbox_{veg_id}"
+
+                # 使用markdown显示颜色块
+                safe_class_name = html.escape(class_name)
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;gap:4px;margin-bottom:4px;'>"
+                    f"<span style='display:inline-block;width:12px;height:12px;background:{color_hex};border-radius:2px;'></span>"
+                    f"<span style='font-size:12px;'>{safe_class_name}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                
+                # 使用checkbox处理交互
+                if st.checkbox(
+                    "显示",
+                    value=is_selected,
+                    key=checkbox_key,
+                    label_visibility="collapsed",
+                ):
+                    st.session_state.selected_vegetation_classes.add(veg_id)
+                else:
+                    st.session_state.selected_vegetation_classes.discard(veg_id)
+
+        segmentation_raw = img_data.get("segmentation_raw") if "segmentation_raw" in img_data else img_data["segmentation"]
+        selected_classes = st.session_state.selected_vegetation_classes
+        segmentation_rgb = cached_segmentation_to_color(segmentation_raw, selected_classes)
+
         # 图像显示（固定高度，三列紧凑布局）
-        blended = blend_images(img_data["original"], img_data["segmentation"], opacity)
+        blended = blend_images(img_data["original"], segmentation_rgb, opacity)
 
         img_cols = st.columns(3, gap="small")
         with img_cols[0]:
@@ -471,7 +524,7 @@ def render_unified_interface(processor, model):
                 blended, caption=f"叠加 {opacity * 100:.0f}%", use_container_width=True
             )
         with img_cols[2]:
-            st.image(img_data["segmentation"], caption="分割", use_container_width=True)
+            st.image(segmentation_rgb, caption="分割", use_container_width=True)
 
         # 导航按钮（如果有多张）
         if len(st.session_state.all_results) > 1:

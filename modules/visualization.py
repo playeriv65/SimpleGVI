@@ -19,6 +19,8 @@ def _get_system_fonts():
 
     if system == "Linux":
         return [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
@@ -28,6 +30,8 @@ def _get_system_fonts():
         ]
     elif system == "Darwin":
         return [
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
             "/System/Library/Fonts/Helvetica.ttc",
             "/System/Library/Fonts/HelveticaNeue.ttc",
             "/Library/Fonts/Arial.ttf",
@@ -67,12 +71,13 @@ def _load_font(size, bold=False):
     return ImageFont.load_default()
 
 
-def segmentation_to_color(segmentation_tensor):
+def segmentation_to_color(segmentation_tensor, selected_classes=None):
     """
     将分割张量转换为RGB彩色图像
 
     Args:
         segmentation_tensor (torch.Tensor or np.ndarray): 分割结果张量或数组
+        selected_classes (set, optional): 选中的植被类别ID集合，None表示全部选中
 
     Returns:
         numpy.ndarray: RGB彩色图像 (H, W, 3)，uint8类型
@@ -82,7 +87,7 @@ def segmentation_to_color(segmentation_tensor):
     else:
         segmentation_array = segmentation_tensor
 
-    return convert_to_vegetation_visualization(segmentation_array)
+    return convert_to_vegetation_visualization(segmentation_array, selected_classes)
 
 
 def get_class_color(class_id):

@@ -19,26 +19,34 @@ ADE20K_VEGETATION_CLASSES: Set[int] = {
     72,
 }  # tree, grass, plant, flower, palm
 
-# Vegetation class information with colors
+# Color constants for vegetation visualization
+VEGETATION_COLOR_RED = [220, 53, 69]      # tree
+VEGETATION_COLOR_BLUE = [0, 123, 255]     # grass
+VEGETATION_COLOR_YELLOW = [255, 193, 7]   # plant
+VEGETATION_COLOR_PURPLE = [111, 66, 193]  # flower
+VEGETATION_COLOR_ORANGE = [253, 126, 20]  # palm
+
 ADE20K_CLASS_INFO: Dict[int, Dict[str, Any]] = {
-    4: {"name": "tree", "color": [120, 120, 120]},
-    9: {"name": "grass", "color": [120, 120, 80]},
-    17: {"name": "plant", "color": [120, 120, 70]},
-    66: {"name": "flower", "color": [0, 255, 133]},
-    72: {"name": "palm", "color": [0, 82, 255]},
+    4: {"name": "tree", "color": VEGETATION_COLOR_RED},
+    9: {"name": "grass", "color": VEGETATION_COLOR_BLUE},
+    17: {"name": "plant", "color": VEGETATION_COLOR_YELLOW},
+    66: {"name": "flower", "color": VEGETATION_COLOR_PURPLE},
+    72: {"name": "palm", "color": VEGETATION_COLOR_ORANGE},
 }
 
 # Display names for vegetation classes
 VEGETATION_NAMES: List[str] = ["tree", "grass", "plant", "flower", "palm"]
 
-# Consistent green tones for vegetation visualization
 VEGETATION_COLORS: List[List[int]] = [
-    [0, 150, 0],  # medium green for trees
-    [0, 200, 0],  # bright green for grass
-    [0, 170, 0],  # mid-green for plants
-    [0, 180, 0],  # green for flowers
-    [0, 160, 0],  # green for palm trees
+    VEGETATION_COLOR_RED,
+    VEGETATION_COLOR_BLUE,
+    VEGETATION_COLOR_YELLOW,
+    VEGETATION_COLOR_PURPLE,
+    VEGETATION_COLOR_ORANGE,
 ]
+
+# Inactive color for unselected vegetation classes
+INACTIVE_VEGETATION_COLOR: List[int] = [200, 200, 200]
 
 # Model configuration
 MODEL_CONFIG: Dict[str, Any] = {
