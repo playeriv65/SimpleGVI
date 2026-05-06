@@ -2,7 +2,7 @@ import os
 import argparse
 import logging
 from modules.batch_processor import process_image_folder
-from modules.resource_manager import get_optimal_workers, print_resource_info
+from modules.resource_manager import print_resource_info, get_resource_monitor, ResourceConfig
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -31,37 +31,9 @@ USAGE_EXAMPLES = """
   # 查看系统资源
   batch_process.py --info
 
-  # 自定义资源比率（高级）
-  batch_process.py images/ --gpu-ratio 0.9 --cpu-ratio 0.8
+  # 设置内存使用上限（默认85%）
+  batch_process.py images/ --max-mem 0.9
 """
-
-
-def print_help():
-    """打印详细帮助信息"""
-    print(BANNER)
-    print("""
-功能说明:
-  批量处理图像文件夹，计算每张图像的绿视指数(Green View Index, GVI)。
-  支持自动并行处理，根据系统资源智能决定并发数。
-
-参数说明:
-  folder_path           包含图像的文件夹路径
-
-选项:
-  -o, --output_dir      输出目录（默认: results）
-  -s, --save_segmentation  保存分割可视化结果
-  -p, --is_panoramic    全景图模式
-  -w, --workers         并行数（默认: auto，可选: auto/数字）
-  -S, --sequential      串行处理（关闭并行）
-  --info                显示系统资源信息
-  --help                显示此帮助信息
-
-高级选项:
-  --gpu-ratio           GPU显存使用比率（默认: 0.8）
-  --cpu-ratio           CPU内存使用比率（默认: 0.7）
-  --reserve-mb          预留内存MB（默认: 1024）
-""")
-    print(USAGE_EXAMPLES)
 
 
 def main():
@@ -75,13 +47,12 @@ def main():
     parser.add_argument("-o", "--output_dir", default="results", help="输出目录（默认: results）")
     parser.add_argument("-s", "--save_segmentation", action="store_true", help="保存分割可视化结果")
     parser.add_argument("-p", "--is_panoramic", action="store_true", help="全景图模式")
-    parser.add_argument("-w", "--workers", type=str, default="auto",
-                        help="并行数（默认: auto，可选: auto/数字）")
+    parser.add_argument("-w", "--workers", type=int, default=4,
+                        help="最大并行数（默认: 4）")
     parser.add_argument("-S", "--sequential", action="store_true", help="串行处理")
     parser.add_argument("--info", action="store_true", help="显示系统资源信息")
-    parser.add_argument("--gpu-ratio", type=float, default=0.8, help=argparse.SUPPRESS)
-    parser.add_argument("--cpu-ratio", type=float, default=0.7, help=argparse.SUPPRESS)
-    parser.add_argument("--reserve-mb", type=int, default=1024, help=argparse.SUPPRESS)
+    parser.add_argument("--max-mem", type=float, default=0.85,
+                        help="最大内存使用率（默认: 0.85，超过此值暂停提交任务）")
     args = parser.parse_args()
 
     if args.info:
@@ -89,27 +60,40 @@ def main():
         return
 
     if not args.folder_path:
-        print_help()
+        print(BANNER)
+        print("""
+功能说明:
+  批量处理图像文件夹，计算每张图像的绿视指数(Green View Index, GVI)。
+  实时监测内存使用情况，超过上限时暂停提交新任务。
+
+参数说明:
+  folder_path           包含图像的文件夹路径
+
+选项:
+  -o, --output_dir      输出目录（默认: results）
+  -s, --save_segmentation  保存分割可视化结果
+  -p, --is_panoramic    全景图模式
+  -w, --workers         最大并行数（默认: 4）
+  -S, --sequential      串行处理
+  --max-mem             最大内存使用率（默认: 0.85）
+  --info                显示系统资源信息
+  --help                显示此帮助信息
+""")
+        print(USAGE_EXAMPLES)
         return
-
-    use_parallel = not args.sequential
-
-    if args.workers == "auto":
-        max_workers = get_optimal_workers(
-            gpu_memory_ratio=args.gpu_ratio,
-            cpu_memory_ratio=args.cpu_ratio,
-            reserve_memory_mb=args.reserve_mb
-        )
-    else:
-        try:
-            max_workers = int(args.workers)
-        except ValueError:
-            logger.error(f"无效的workers参数: {args.workers}，应为数字或'auto'")
-            return
 
     if not os.path.exists(args.folder_path):
         logger.error(f"文件夹 '{args.folder_path}' 不存在")
         return
+
+    use_parallel = not args.sequential
+    max_workers = args.workers if use_parallel else 1
+
+    # 显示资源信息
+    config = ResourceConfig(max_memory_usage=args.max_mem)
+    monitor = get_resource_monitor(config)
+    memory_usage = monitor.get_memory_usage()
+    logger.info(f"当前内存使用率: {memory_usage:.1%}, 上限: {args.max_mem:.0%}")
 
     logger.info(f"开始处理: {args.folder_path}")
     logger.info(f"模式: {'并行' if use_parallel else '串行'}, 并行数: {max_workers}")
@@ -120,7 +104,8 @@ def main():
         args.save_segmentation,
         args.is_panoramic,
         use_parallel=use_parallel,
-        max_workers=max_workers
+        max_workers=max_workers,
+        max_memory_usage=args.max_mem
     )
 
     if df is not None:
