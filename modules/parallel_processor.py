@@ -166,21 +166,21 @@ class ParallelProcessor:
                 pending_futures = set()
                 
                 while True:
-                    # 提交新任务（受资源限制）
-                    while len(pending_futures) < self.config.max_workers:
+                    # 计算当前可提交的任务数
+                    current_max_workers = self.config.max_workers
+                    
+                    # 如果内存超限，降级为串行（每次只提交1个任务）
+                    if not self.monitor.can_submit_task():
+                        current_max_workers = 1
+                        memory_usage = self.monitor.get_memory_usage()
+                        logger.info(f"内存使用率 {memory_usage:.1%} 超限，降级为串行处理")
+                    
+                    # 提交新任务
+                    while len(pending_futures) < current_max_workers:
                         try:
                             task = next(task_iter)
                         except StopIteration:
                             break
-                        
-                        # 检查资源是否可用
-                        if not self.monitor.can_submit_task():
-                            memory_usage = self.monitor.get_memory_usage()
-                            logger.info(f"内存使用率 {memory_usage:.1%} 超限，等待资源释放...")
-                            
-                            if not self.monitor.wait_for_resources(timeout=300):
-                                logger.warning("等待资源超时，跳过剩余任务")
-                                break
                         
                         future = executor.submit(_process_single_image, task)
                         futures[future] = task
