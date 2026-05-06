@@ -123,7 +123,7 @@ def save_segmentation_visualization(image_path, segmentation, gvi, output_path):
     保存分割可视化结果
 
     将原始图像与语义分割结果并排显示，并添加标题、图例和GVI值。
-    使用 ADE20K 150类别调色板，植被类别用绿色系显示，非植被用灰色显示。
+    使用 ADE20K 150类别调色板，植被类别用彩色显示，非植被用灰色显示。
 
     Args:
         image_path (str): 原始图像文件路径
