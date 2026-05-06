@@ -53,7 +53,7 @@ def process_image_folder(folder_path, output_dir, save_segmentation=False, is_pa
         image_name = os.path.basename(image_path)
         try:
             # 处理图像
-            gvi, segmentation = process_image(image_path, is_panoramic, processor, model)
+            gvi, segmentation, processed_image = process_image(image_path, is_panoramic, processor, model)
             
             # 将结果添加到列表中
             results.append({
