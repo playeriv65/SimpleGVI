@@ -7,31 +7,89 @@ from modules.resource_manager import get_optimal_workers, print_resource_info
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+BANNER = """
+╔═══════════════════════════════════════════════════════════════╗
+║                    SimpleGVI 批量处理工具                      ║
+║                   计算图像的绿视指数 (GVI)                      ║
+╚═══════════════════════════════════════════════════════════════╝
+"""
+
+USAGE_EXAMPLES = """
+使用示例:
+  # 自动并行处理（推荐）
+  batch_process.py images/
+
+  # 保存分割结果
+  batch_process.py images/ -s
+
+  # 指定并行数
+  batch_process.py images/ -w 4
+
+  # 串行处理
+  batch_process.py images/ -S
+
+  # 查看系统资源
+  batch_process.py --info
+
+  # 自定义资源比率（高级）
+  batch_process.py images/ --gpu-ratio 0.9 --cpu-ratio 0.8
+"""
+
+
+def print_help():
+    """打印详细帮助信息"""
+    print(BANNER)
+    print("""
+功能说明:
+  批量处理图像文件夹，计算每张图像的绿视指数(Green View Index, GVI)。
+  支持自动并行处理，根据系统资源智能决定并发数。
+
+参数说明:
+  folder_path           包含图像的文件夹路径
+
+选项:
+  -o, --output_dir      输出目录（默认: results）
+  -s, --save_segmentation  保存分割可视化结果
+  -p, --is_panoramic    全景图模式
+  -w, --workers         并行数（默认: auto，可选: auto/数字）
+  -S, --sequential      串行处理（关闭并行）
+  --info                显示系统资源信息
+  --help                显示此帮助信息
+
+高级选项:
+  --gpu-ratio           GPU显存使用比率（默认: 0.8）
+  --cpu-ratio           CPU内存使用比率（默认: 0.7）
+  --reserve-mb          预留内存MB（默认: 1024）
+""")
+    print(USAGE_EXAMPLES)
+
 
 def main():
-    """
-    批量处理图像文件夹，计算每个图像的绿视指数(GVI)
-    """
-    parser = argparse.ArgumentParser(description="批量计算图像的绿视指数(Green View Index, GVI)")
+    """批量处理图像文件夹，计算每个图像的绿视指数(GVI)"""
+    parser = argparse.ArgumentParser(
+        description="批量计算图像的绿视指数(Green View Index, GVI)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=USAGE_EXAMPLES
+    )
     parser.add_argument("folder_path", nargs='?', help="包含图像的文件夹路径")
-    parser.add_argument("--output_dir", "-o", default="results", help="输出结果的文件夹路径")
-    parser.add_argument("--save_segmentation", "-s", action="store_true", help="是否保存分割可视化结果")
-    parser.add_argument("--is_panoramic", "-p", action="store_true", help="图像是否为全景图")
-    parser.add_argument("--parallel", "-P", action="store_true", default=True, help="使用并行处理（默认开启）")
-    parser.add_argument("--sequential", "-S", action="store_true", help="使用串行处理")
-    parser.add_argument("--workers", "-w", type=str, default="auto",
-                        help="并行处理的最大工作数（默认auto，可指定数字或auto）")
-    parser.add_argument("--gpu-ratio", type=float, default=0.8,
-                        help="GPU显存使用比率（默认0.8，类似vLLM）")
-    parser.add_argument("--cpu-ratio", type=float, default=0.7,
-                        help="CPU内存使用比率（默认0.7）")
-    parser.add_argument("--reserve-mb", type=int, default=1024,
-                        help="预留内存MB（默认1024）")
-    parser.add_argument("--info", action="store_true", help="显示系统资源信息并退出")
+    parser.add_argument("-o", "--output_dir", default="results", help="输出目录（默认: results）")
+    parser.add_argument("-s", "--save_segmentation", action="store_true", help="保存分割可视化结果")
+    parser.add_argument("-p", "--is_panoramic", action="store_true", help="全景图模式")
+    parser.add_argument("-w", "--workers", type=str, default="auto",
+                        help="并行数（默认: auto，可选: auto/数字）")
+    parser.add_argument("-S", "--sequential", action="store_true", help="串行处理")
+    parser.add_argument("--info", action="store_true", help="显示系统资源信息")
+    parser.add_argument("--gpu-ratio", type=float, default=0.8, help=argparse.SUPPRESS)
+    parser.add_argument("--cpu-ratio", type=float, default=0.7, help=argparse.SUPPRESS)
+    parser.add_argument("--reserve-mb", type=int, default=1024, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     if args.info:
         print_resource_info()
+        return
+
+    if not args.folder_path:
+        print_help()
         return
 
     use_parallel = not args.sequential
@@ -53,13 +111,8 @@ def main():
         logger.error(f"文件夹 '{args.folder_path}' 不存在")
         return
 
-    logger.info(f"开始处理文件夹: {args.folder_path}")
-    logger.info(f"处理模式: {'并行' if use_parallel else '串行'}")
-    if use_parallel:
-        logger.info(f"最大并行数: {max_workers}")
-        if args.workers == "auto":
-            logger.info(f"GPU显存比率: {args.gpu_ratio}")
-            logger.info(f"CPU内存比率: {args.cpu_ratio}")
+    logger.info(f"开始处理: {args.folder_path}")
+    logger.info(f"模式: {'并行' if use_parallel else '串行'}, 并行数: {max_workers}")
 
     df = process_image_folder(
         args.folder_path,
