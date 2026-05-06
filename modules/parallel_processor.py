@@ -7,11 +7,11 @@
 
 import os
 import glob
+import time
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed, Future
 from typing import List, Optional, Callable
 from dataclasses import dataclass
-import threading
 
 import pandas as pd
 from tqdm import tqdm
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ProcessingConfig:
     """处理配置"""
-    max_workers: int = 4
+    max_workers: int = 16  # 最大并行数上限
     save_segmentation: bool = False
     is_panoramic: bool = False
     output_dir: str = "results"
@@ -98,14 +98,13 @@ class ParallelProcessor:
     """
     并行图像处理器
     
-    使用实时资源监测，动态控制任务提交。
-    当内存使用率超过阈值时，暂停提交新任务，等待资源释放。
+    填满式策略：不断提交任务，直到内存/显存接近上限。
+    资源不足时等待任务完成，释放资源后继续提交。
     """
     
     def __init__(self, config: ProcessingConfig):
         self.config = config
         
-        # 创建资源监测器
         resource_config = ResourceConfig(
             max_memory_usage=config.max_memory_usage,
             max_workers=config.max_workers
@@ -135,7 +134,9 @@ class ParallelProcessor:
         """
         并行处理文件夹中的所有图像
         
-        实时监测资源使用情况，动态控制任务提交。
+        填满式策略：
+        1. 不断提交任务，直到内存/显存接近上限
+        2. 等待任务完成，释放资源后继续提交
         """
         image_files = self._get_image_files(folder_path)
         
@@ -159,24 +160,21 @@ class ParallelProcessor:
         
         results = []
         futures: dict[Future, ImageTask] = {}
+        pending_futures = set()
         
         with ProcessPoolExecutor(max_workers=self.config.max_workers) as executor:
             with tqdm(total=len(tasks), desc="处理图像") as pbar:
                 task_iter = iter(tasks)
-                pending_futures = set()
                 
                 while True:
-                    # 计算当前可提交的任务数
-                    current_max_workers = self.config.max_workers
-                    
-                    # 如果内存超限，降级为串行（每次只提交1个任务）
-                    if not self.monitor.can_submit_task():
-                        current_max_workers = 1
-                        memory_usage = self.monitor.get_memory_usage()
-                        logger.info(f"内存使用率 {memory_usage:.1%} 超限，降级为串行处理")
-                    
-                    # 提交新任务
-                    while len(pending_futures) < current_max_workers:
+                    # 填满式提交：不断提交直到资源接近上限
+                    while len(pending_futures) < self.config.max_workers:
+                        # 检查资源是否可用
+                        if not self.monitor.can_submit_task():
+                            memory_usage = self.monitor.get_memory_usage()
+                            logger.debug(f"内存使用率 {memory_usage:.1%}，等待资源释放...")
+                            break
+                        
                         try:
                             task = next(task_iter)
                         except StopIteration:
@@ -186,6 +184,7 @@ class ParallelProcessor:
                         futures[future] = task
                         pending_futures.add(future)
                     
+                    # 所有任务都完成了
                     if not pending_futures:
                         break
                     
@@ -197,7 +196,6 @@ class ParallelProcessor:
                     
                     # 如果没有完成的任务，等待一小段时间
                     if not done:
-                        import time
                         time.sleep(0.1)
                         continue
                     
@@ -257,7 +255,7 @@ def process_image_folder_parallel(
     output_dir: str = "results",
     save_segmentation: bool = False,
     is_panoramic: bool = False,
-    max_workers: int = 4,
+    max_workers: int = 16,
     max_memory_usage: float = 0.85
 ) -> pd.DataFrame:
     """并行处理图像文件夹（便捷函数）"""

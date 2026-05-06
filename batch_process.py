@@ -22,9 +22,6 @@ USAGE_EXAMPLES = """
   # 保存分割结果
   batch_process.py images/ -s
 
-  # 指定并行数
-  batch_process.py images/ -w 4
-
   # 串行处理
   batch_process.py images/ -S
 
@@ -47,12 +44,10 @@ def main():
     parser.add_argument("-o", "--output_dir", default="results", help="输出目录（默认: results）")
     parser.add_argument("-s", "--save_segmentation", action="store_true", help="保存分割可视化结果")
     parser.add_argument("-p", "--is_panoramic", action="store_true", help="全景图模式")
-    parser.add_argument("-w", "--workers", type=int, default=4,
-                        help="最大并行数（默认: 4）")
     parser.add_argument("-S", "--sequential", action="store_true", help="串行处理")
     parser.add_argument("--info", action="store_true", help="显示系统资源信息")
     parser.add_argument("--max-mem", type=float, default=0.85,
-                        help="最大内存使用率（默认: 0.85，超过此值暂停提交任务）")
+                        help="最大内存使用率（默认: 0.85）")
     args = parser.parse_args()
 
     if args.info:
@@ -64,7 +59,8 @@ def main():
         print("""
 功能说明:
   批量处理图像文件夹，计算每张图像的绿视指数(Green View Index, GVI)。
-  实时监测内存使用情况，超过上限时暂停提交新任务。
+  填满式策略：不断提交任务，直到内存/显存接近上限。
+  资源不足时等待任务完成，释放资源后继续提交。
 
 参数说明:
   folder_path           包含图像的文件夹路径
@@ -73,7 +69,6 @@ def main():
   -o, --output_dir      输出目录（默认: results）
   -s, --save_segmentation  保存分割可视化结果
   -p, --is_panoramic    全景图模式
-  -w, --workers         最大并行数（默认: 4）
   -S, --sequential      串行处理
   --max-mem             最大内存使用率（默认: 0.85）
   --info                显示系统资源信息
@@ -87,7 +82,6 @@ def main():
         return
 
     use_parallel = not args.sequential
-    max_workers = args.workers if use_parallel else 1
 
     # 显示资源信息
     config = ResourceConfig(max_memory_usage=args.max_mem)
@@ -96,7 +90,7 @@ def main():
     logger.info(f"当前内存使用率: {memory_usage:.1%}, 上限: {args.max_mem:.0%}")
 
     logger.info(f"开始处理: {args.folder_path}")
-    logger.info(f"模式: {'并行' if use_parallel else '串行'}, 并行数: {max_workers}")
+    logger.info(f"模式: {'并行（填满式）' if use_parallel else '串行'}")
 
     df = process_image_folder(
         args.folder_path,
@@ -104,7 +98,7 @@ def main():
         args.save_segmentation,
         args.is_panoramic,
         use_parallel=use_parallel,
-        max_workers=max_workers,
+        max_workers=16,
         max_memory_usage=args.max_mem
     )
 
