@@ -11,6 +11,8 @@ import logging
 from dataclasses import dataclass
 from typing import Tuple
 
+import psutil
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,7 +21,6 @@ class ResourceConfig:
     """资源配置"""
     max_memory_usage: float = 0.85  # 最大内存使用率（超过此值暂停提交任务）
     check_interval: float = 1.0  # 检查间隔（秒）
-    min_workers: int = 1  # 最小并行数
     max_workers: int = 16  # 最大并行数上限
 
 
@@ -44,7 +45,7 @@ class ResourceMonitor:
             if torch.cuda.is_available():
                 self._gpu_available = True
                 props = torch.cuda.get_device_properties(0)
-                self._gpu_total_mb = props.total_mem // (1024 * 1024)
+                self._gpu_total_mb = props.total_memory // (1024 * 1024)
                 logger.info(f"GPU: {torch.cuda.get_device_name(0)}, 显存: {self._gpu_total_mb}MB")
         except ImportError:
             pass
@@ -54,21 +55,9 @@ class ResourceMonitor:
     
     def _get_memory_info(self) -> Tuple[int, int]:
         """获取内存信息（总量MB，可用MB）"""
-        total_mb = 8192
-        available_mb = 4096
-        
-        try:
-            with open('/proc/meminfo', 'r') as f:
-                for line in f:
-                    if line.startswith('MemTotal:'):
-                        total_mb = int(line.split()[1]) // 1024
-                    elif line.startswith('MemAvailable:'):
-                        available_mb = int(line.split()[1]) // 1024
-        except (FileNotFoundError, IOError, ValueError):
-            pass
-        
-        return total_mb, available_mb
-    
+        memory = psutil.virtual_memory()
+        return memory.total // (1024 * 1024), memory.available // (1024 * 1024)
+
     def get_memory_usage(self) -> float:
         """获取当前内存使用率 (0.0-1.0)"""
         total, available = self._get_memory_info()
@@ -82,9 +71,10 @@ class ResourceMonitor:
         
         try:
             import torch
-            used = torch.cuda.memory_allocated(0) // (1024 * 1024)
-            return used / self._gpu_total_mb if self._gpu_total_mb > 0 else 0.0
-        except:
+            free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+            used_bytes = total_bytes - free_bytes
+            return used_bytes / total_bytes if total_bytes > 0 else 0.0
+        except Exception:
             return 0.0
     
     def can_submit_task(self) -> bool:
@@ -132,10 +122,15 @@ class ResourceMonitor:
         
         if self._gpu_available:
             import torch
-            gpu_used = torch.cuda.memory_allocated(0) // (1024 * 1024)
+            free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+            gpu_total = total_bytes // (1024 * 1024)
+            gpu_available = free_bytes // (1024 * 1024)
+            gpu_used = gpu_total - gpu_available
             gpu_usage = self.get_gpu_usage()
             lines.append(f"GPU: {torch.cuda.get_device_name(0)}")
-            lines.append(f"显存: {self._gpu_total_mb}MB 总量, {gpu_used}MB 使用, 使用率 {gpu_usage:.1%}")
+            lines.append(
+                f"显存: {gpu_total}MB 总量, {gpu_available}MB 可用, {gpu_used}MB 使用, 使用率 {gpu_usage:.1%}"
+            )
         
         lines.append(f"\n配置: 最大内存使用率 {self.config.max_memory_usage:.0%}")
         
@@ -148,7 +143,7 @@ _monitor: ResourceMonitor = None
 def get_resource_monitor(config: ResourceConfig = None) -> ResourceMonitor:
     """获取全局资源监测器"""
     global _monitor
-    if _monitor is None:
+    if _monitor is None or (config is not None and _monitor.config != config):
         _monitor = ResourceMonitor(config)
     return _monitor
 

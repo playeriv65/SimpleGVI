@@ -23,6 +23,7 @@ MAX_IMAGE_SIZE = 1024  # 最大边长 (像素)
 MIN_IMAGE_SIZE = 1  # 最小边长 (避免 resize 到 0)
 # 全景图像处理
 PANORAMIC_BOTTOM_CROP_RATIO = 0.2  # 裁剪底部 20% (移除地面畸变区域)
+PANORAMIC_TARGET_WIDTH = 1024  # 全景图处理时统一压缩到的宽度
 
 
 def get_models():
@@ -39,7 +40,7 @@ def get_models():
     model = Mask2FormerForUniversalSegmentation.from_pretrained(
         "facebook/mask2former-swin-large-ade-semantic"
     )
-    model = model.to(device)
+    model = model.to(device=device)
     return processor, model
 
 
@@ -96,10 +97,8 @@ def process_panoramic_image(image, processor, model):
     """
     处理全景图像
     
-    全景图像通常有地面畸变，需要：
-    1. 裁剪底部 20% (移除畸变区域)
-    2. 分 4 块处理
-    3. 取 4 块的平均值
+    全景图像通常在底部有畸变；处理时只裁剪底部区域，
+    然后将宽度压缩到 1024px 以内以降低显存占用。
     
     Args:
         image: PIL Image 对象
@@ -107,53 +106,26 @@ def process_panoramic_image(image, processor, model):
         model: 分割模型
     
     Returns:
-        tuple: (gvi, segmentation) GVI 值和分割结果
+        tuple: (gvi, segmentation, image) GVI 值、分割结果和预处理后的图像
     """
     width, height = image.size
 
     # 裁剪底部 20% (全景图像地面畸变校正)
     bottom_crop = int(height * PANORAMIC_BOTTOM_CROP_RATIO)
     image = image.crop((0, 0, width, height - bottom_crop))
+    width, height = image.size
+
+    if width > PANORAMIC_TARGET_WIDTH:
+        scale = PANORAMIC_TARGET_WIDTH / width
+        new_height = max(MIN_IMAGE_SIZE, int(height * scale))
+        image = image.resize(
+            (PANORAMIC_TARGET_WIDTH, new_height), Image.Resampling.LANCZOS
+        )
 
     segmentation = segment_image(image, processor, model)
+    gvi = calculate_gvi(segmentation)
 
-    # 分 4 块处理
-    w4 = int(width / 4)
-    h4 = int(height / 4)
-    hFor43 = int(w4 * 3 / 4)
-
-    segmentations = []
-
-    for w in range(4):
-        x_begin = w * w4
-        x_end = (w + 1) * w4
-        cropped_segmentation = segmentation[h4 : h4 + hFor43, x_begin:x_end]
-        segmentations.append(cropped_segmentation)
-
-    gvi = calculate_gvi_from_segmentations(segmentations)
-
-    return gvi, segmentation
-
-
-def calculate_gvi_from_segmentations(segmentations):
-    """
-    从多个分割结果计算平均绿视指数
-    
-    Args:
-        segmentations: 分割结果列表
-    
-    Returns:
-        float: 平均 GVI 值
-    """
-    total_pixels = 0
-    vegetation_pixels = 0
-
-    for segment in segmentations:
-        total_pixels += segment.numel()
-        for veg_class in ADE20K_VEGETATION_CLASSES:
-            vegetation_pixels += (segment == veg_class).sum().item()
-
-    return vegetation_pixels / total_pixels if total_pixels else 0
+    return gvi, segmentation, image
 
 
 def process_image(image_path, is_panoramic, processor, model, max_size=MAX_IMAGE_SIZE):
@@ -183,7 +155,7 @@ def process_image(image_path, is_panoramic, processor, model, max_size=MAX_IMAGE
     width, height = image.size
     max_dimension = max(width, height)
     
-    if max_dimension > max_size:
+    if not is_panoramic and max_dimension > max_size:
         scale = max_size / max_dimension
         # 确保最小尺寸为 1，避免整数截断导致 0 尺寸
         new_width = max(MIN_IMAGE_SIZE, int(width * scale))
@@ -191,7 +163,7 @@ def process_image(image_path, is_panoramic, processor, model, max_size=MAX_IMAGE
         image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
     
     if is_panoramic:
-        gvi, segmentation = process_panoramic_image(image, processor, model)
+        gvi, segmentation, image = process_panoramic_image(image, processor, model)
     else:
         segmentation = segment_image(image, processor, model)
         gvi = calculate_gvi(segmentation)

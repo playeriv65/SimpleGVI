@@ -3,6 +3,8 @@ SimpleGVI Configuration Module
 Centralized configuration for the Green View Index application
 """
 
+import csv
+from pathlib import Path
 from typing import Dict, List, Set, Any
 import torch
 
@@ -19,30 +21,36 @@ ADE20K_VEGETATION_CLASSES: Set[int] = {
     72,
 }  # tree, grass, plant, flower, palm
 
-# Color constants for vegetation visualization
-VEGETATION_COLOR_RED = [220, 53, 69]      # tree
-VEGETATION_COLOR_BLUE = [0, 123, 255]     # grass
-VEGETATION_COLOR_YELLOW = [255, 193, 7]   # plant
-VEGETATION_COLOR_PURPLE = [111, 66, 193]  # flower
-VEGETATION_COLOR_ORANGE = [253, 126, 20]  # palm
+ADE20K_COLOR_CSV = Path(__file__).resolve().with_name("ade20k_colors.csv")
 
-ADE20K_CLASS_INFO: Dict[int, Dict[str, Any]] = {
-    4: {"name": "tree", "color": VEGETATION_COLOR_RED},
-    9: {"name": "grass", "color": VEGETATION_COLOR_BLUE},
-    17: {"name": "plant", "color": VEGETATION_COLOR_YELLOW},
-    66: {"name": "flower", "color": VEGETATION_COLOR_PURPLE},
-    72: {"name": "palm", "color": VEGETATION_COLOR_ORANGE},
-}
+
+def _parse_rgb(value: str) -> List[int]:
+    """Parse an ADE20K RGB tuple string such as '(120, 120, 120)'."""
+    return [int(part.strip()) for part in value.strip().strip('"()').split(",")]
+
+
+def _load_ade20k_class_info() -> Dict[int, Dict[str, Any]]:
+    """Load ADE20K's official 150-class color table from the bundled CSV."""
+    class_info: Dict[int, Dict[str, Any]] = {}
+    with ADE20K_COLOR_CSV.open("r", encoding="utf-8-sig", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            class_id = int(row["Idx"]) - 1
+            class_info[class_id] = {
+                "name": row["Name"].split(";")[0],
+                "color": _parse_rgb(row["Color_Code (R,G,B)"]),
+            }
+    return class_info
+
+
+ADE20K_CLASS_INFO: Dict[int, Dict[str, Any]] = _load_ade20k_class_info()
 
 # Display names for vegetation classes
 VEGETATION_NAMES: List[str] = ["tree", "grass", "plant", "flower", "palm"]
 
 VEGETATION_COLORS: List[List[int]] = [
-    VEGETATION_COLOR_RED,
-    VEGETATION_COLOR_BLUE,
-    VEGETATION_COLOR_YELLOW,
-    VEGETATION_COLOR_PURPLE,
-    VEGETATION_COLOR_ORANGE,
+    ADE20K_CLASS_INFO[class_id]["color"]
+    for class_id in sorted(ADE20K_VEGETATION_CLASSES)
 ]
 
 # Inactive color for unselected vegetation classes

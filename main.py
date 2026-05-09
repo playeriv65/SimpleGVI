@@ -86,7 +86,7 @@ def main():
 
         output_path = os.path.join(args.output_dir, f"{image_name}_segmentation.png")
         save_segmentation_visualization(
-            args.image_path,
+            processed_image,
             segmentation,
             gvi,
             output_path,

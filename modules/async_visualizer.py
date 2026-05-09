@@ -37,7 +37,7 @@ class AsyncVisualizer:
     def submit_visualization(
         self,
         func: Callable,
-        image_path: str,
+        image_source,
         segmentation,
         gvi: float,
         output_path: str,
@@ -48,7 +48,7 @@ class AsyncVisualizer:
         
         Args:
             func: 可视化函数
-            image_path: 原始图像路径
+            image_source: 原始图像路径或预处理后的图像
             segmentation: 分割结果
             gvi: GVI值
             output_path: 输出路径
@@ -59,7 +59,7 @@ class AsyncVisualizer:
         """
         def _task():
             try:
-                func(image_path, segmentation, gvi, output_path)
+                func(image_source, segmentation, gvi, output_path)
                 with self._lock:
                     self._completed_count += 1
                 if callback:

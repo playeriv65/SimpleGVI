@@ -9,7 +9,7 @@ from tqdm import tqdm
 from modules.gvi_calculator import process_image, get_models
 from modules.visualization import save_segmentation_visualization
 from modules.async_visualizer import get_async_visualizer, shutdown_async_visualizer
-from modules.parallel_processor import process_image_folder_parallel, ProcessingConfig, ParallelProcessor
+from modules.parallel_processor import ProcessingConfig, ParallelProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def _process_sequential(
     output_dir: str,
     save_segmentation: bool,
     is_panoramic: bool
-) -> pd.DataFrame:
+) -> Optional[pd.DataFrame]:
     """串行处理图像文件夹（使用异步可视化）"""
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -103,7 +103,7 @@ def _process_sequential(
                 output_path = os.path.join(output_dir, out_name)
                 visualizer.submit_visualization(
                     save_segmentation_visualization,
-                    image_path,
+                    processed_image,
                     segmentation,
                     gvi,
                     output_path

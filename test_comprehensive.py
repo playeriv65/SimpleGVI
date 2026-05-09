@@ -108,18 +108,21 @@ class TestGVICalculator:
         from modules.gvi_calculator import process_image, get_models
 
         # 使用示例图像测试
-        test_image = "images/green_forest1.jpg"
+        test_image = "examples/03_dense_forest.jpg"
         if not os.path.exists(test_image):
             pytest.skip("测试图像不存在")
 
         try:
             processor, model = get_models()
-            gvi, segmentation = process_image(test_image, False, processor, model)
+            gvi, segmentation, processed_image = process_image(
+                test_image, False, processor, model
+            )
 
             # 验证结果
             assert 0 <= gvi <= 1, f"GVI 应该在 0-1 之间，实际是 {gvi}"
             assert segmentation is not None
-            assert isinstance(segmentation, np.ndarray)
+            assert hasattr(segmentation, "shape")
+            assert processed_image is not None
             print(f"✓ 图像处理成功，GVI: {gvi:.4f}")
         except Exception as e:
             pytest.skip(f"图像处理失败: {e}")
@@ -148,7 +151,7 @@ class TestVisualization:
         from modules.visualization import save_segmentation_visualization
         from modules.gvi_calculator import process_image, get_models
 
-        test_image = "images/green_forest1.jpg"
+        test_image = "examples/03_dense_forest.jpg"
         if not os.path.exists(test_image):
             pytest.skip("测试图像不存在")
 
@@ -158,9 +161,13 @@ class TestVisualization:
 
         try:
             processor, model = get_models()
-            gvi, segmentation = process_image(test_image, False, processor, model)
+            gvi, segmentation, processed_image = process_image(
+                test_image, False, processor, model
+            )
 
-            save_segmentation_visualization(test_image, segmentation, gvi, output_path)
+            save_segmentation_visualization(
+                processed_image, segmentation, gvi, output_path
+            )
 
             # 验证输出文件
             assert os.path.exists(output_path), "输出文件应该存在"
@@ -187,6 +194,7 @@ class TestCLIFunctionality:
             [sys.executable, "main.py", "--help"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=60,
         )
 
@@ -202,6 +210,7 @@ class TestCLIFunctionality:
             [sys.executable, "batch_process.py", "--help"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=10,
         )
 
@@ -249,7 +258,7 @@ class TestIntegration:
         from modules.gvi_calculator import process_image, get_models
         from modules.visualization import save_segmentation_visualization
 
-        test_image = "images/green_forest1.jpg"
+        test_image = "examples/03_dense_forest.jpg"
         if not os.path.exists(test_image):
             pytest.skip("测试图像不存在")
 
@@ -268,7 +277,9 @@ class TestIntegration:
             print(f"✓ 图像处理成功，GVI: {gvi:.4f}")
 
             # 3. 保存可视化
-            save_segmentation_visualization(test_image, segmentation, gvi, output_path)
+            save_segmentation_visualization(
+                processed_image, segmentation, gvi, output_path
+            )
             print(f"✓ 可视化保存成功")
 
             # 4. 验证结果

@@ -26,7 +26,7 @@ uv pip install -r requirements.txt
 
 ```bash
 # 处理单张图像
-uv run main.py examples/forest.jpg --save_segmentation
+uv run main.py examples/03_dense_forest.jpg --save_segmentation
 
 # 批量处理文件夹
 uv run batch_process.py path/to/images/ --save_segmentation
@@ -42,7 +42,7 @@ processor, model = get_models()
 
 # 处理图像
 gvi, segmentation, image = process_image(
-    'examples/forest.jpg',
+    'examples/03_dense_forest.jpg',
     is_panoramic=False,
     processor=processor,
     model=model
@@ -96,15 +96,15 @@ uv run streamlit run app.py --server.port 8501
 
 ```bash
 # 测试示例图像
-uv run main.py examples/forest.jpg -s
+uv run main.py examples/03_dense_forest.jpg -s
 ```
 
 输出:
 ```
 加载语义分割模型...
-处理图像：examples/forest.jpg
+处理图像：examples/03_dense_forest.jpg
 绿视指数 (GVI): 1.0000
-分割可视化结果已保存到：results/forest_segmentation.png
+分割可视化结果已保存到：results/03_dense_forest_segmentation.png
 处理完成!
 ```
 

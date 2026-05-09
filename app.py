@@ -14,13 +14,11 @@ from modules.gvi_calculator import process_image
 from modules.visualization import segmentation_to_color
 from config.settings import ADE20K_CLASS_INFO, ADE20K_VEGETATION_CLASSES
 import html
-from functools import lru_cache
 
 MAX_UPLOAD_SIZE_MB = 50
 MAX_BATCH_FILES = 20
 MODEL_CACHE_MAX_SIZE = 10
 FILENAME_DISPLAY_LENGTH_SIDEBAR = 12  # For left panel list
-FILENAME_DISPLAY_LENGTH_MAIN = 15  # For right panel header
 MAX_ERROR_LENGTH = 50  # For error message truncation
 
 
@@ -138,11 +136,7 @@ def load_models():
 
 def init_session_state():
     defaults = {
-        "gvi_result": None,
-        "display_image": None,
-        "segmentation_rgb": None,
         "opacity": 0.5,
-        "uploaded_name": None,
         "original_size": None,
         "processed_size": None,
         "model_loaded": False,
@@ -288,60 +282,6 @@ def render_loading_animation():
     )
 
 
-def render_result_card():
-    gvi = st.session_state.gvi_result
-
-    if gvi >= 0.3:
-        level, level_color = "优秀", "#34C759"
-    elif gvi >= 0.15:
-        level, level_color = "良好", "#FF9500"
-    else:
-        level, level_color = "较低", "#FF3B30"
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(
-            f"<div style='font-size:32px;font-weight:700;color:#1D1D1F;'>{gvi * 100:.1f}%</div>",
-            unsafe_allow_html=True,
-        )
-        st.caption("植被占比")
-    with col2:
-        st.markdown(
-            f"<div style='font-size:20px;font-weight:600;color:{level_color};text-align:right;'>{level}</div>",
-            unsafe_allow_html=True,
-        )
-        st.caption("绿化等级")
-
-    if st.session_state.original_size != st.session_state.processed_size:
-        st.caption(
-            f"⚠️ 已缩放：{st.session_state.original_size[0]}×{st.session_state.original_size[1]} → {st.session_state.processed_size[0]}×{st.session_state.processed_size[1]}"
-        )
-
-
-def render_image_viewer():
-    opacity = st.slider("透明度", 0.0, 1.0, st.session_state.opacity, 0.05)
-
-    blended = blend_images(
-        st.session_state.display_image,
-        st.session_state.segmentation_rgb,
-        opacity,
-    )
-
-    col1, col2, col3 = st.columns(3, gap="small")
-    with col1:
-        st.image(
-            st.session_state.display_image, caption="原始", use_container_width=True
-        )
-    with col2:
-        st.image(
-            blended, caption=f"叠加 ({opacity * 100:.0f}%)", use_container_width=True
-        )
-    with col3:
-        st.image(
-            st.session_state.segmentation_rgb, caption="分割", use_container_width=True
-        )
-
-
 def render_unified_interface(processor, model):
     left_col, right_col = st.columns([1, 3], gap="small")
 
@@ -479,7 +419,9 @@ def render_unified_interface(processor, model):
         legend_cols = st.columns(5, gap="small")
         sorted_veg_ids = sorted(list(ADE20K_VEGETATION_CLASSES))
         for i, veg_id in enumerate(sorted_veg_ids):
-            class_info = ADE20K_CLASS_INFO.get(veg_id, {"name": "unknown", "color": [128, 128, 128]})
+            class_info = ADE20K_CLASS_INFO.get(
+                veg_id, {"name": "unknown", "color": [128, 128, 128]}
+            )
             class_name = class_info["name"]
             color = class_info["color"]
             color_hex = f"#{color[0]:02x}{color[1]:02x}{color[2]:02x}"
@@ -509,7 +451,7 @@ def render_unified_interface(processor, model):
                 else:
                     st.session_state.selected_vegetation_classes.discard(veg_id)
 
-        segmentation_raw = img_data.get("segmentation_raw") if "segmentation_raw" in img_data else img_data["segmentation"]
+        segmentation_raw = img_data.get("segmentation_raw", img_data["segmentation"])
         selected_classes = st.session_state.selected_vegetation_classes
         segmentation_rgb = cached_segmentation_to_color(segmentation_raw, selected_classes)
 

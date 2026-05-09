@@ -9,14 +9,14 @@ import os
 import glob
 import time
 import logging
-from concurrent.futures import ProcessPoolExecutor, as_completed, Future
+from concurrent.futures import ProcessPoolExecutor, Future
 from typing import List, Optional, Callable
 from dataclasses import dataclass
 
 import pandas as pd
 from tqdm import tqdm
 
-from modules.resource_manager import ResourceMonitor, ResourceConfig, get_resource_monitor
+from modules.resource_manager import ResourceConfig, get_resource_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def _process_single_image(task: ImageTask) -> ProcessingResult:
             out_name = os.path.splitext(task.image_name)[0] + '_segmentation.png'
             segmentation_path = os.path.join(task.output_dir, out_name)
             save_segmentation_visualization(
-                task.image_path,
+                processed_image,
                 segmentation,
                 gvi,
                 segmentation_path
@@ -248,24 +248,3 @@ class ParallelProcessor:
             logger.info(f"平均绿视指数: {avg_gvi:.4f}")
         
         return df
-
-
-def process_image_folder_parallel(
-    folder_path: str,
-    output_dir: str = "results",
-    save_segmentation: bool = False,
-    is_panoramic: bool = False,
-    max_workers: int = 16,
-    max_memory_usage: float = 0.85
-) -> pd.DataFrame:
-    """并行处理图像文件夹（便捷函数）"""
-    config = ProcessingConfig(
-        max_workers=max_workers,
-        save_segmentation=save_segmentation,
-        is_panoramic=is_panoramic,
-        output_dir=output_dir,
-        max_memory_usage=max_memory_usage
-    )
-    
-    processor = ParallelProcessor(config)
-    return processor.process_folder(folder_path)
