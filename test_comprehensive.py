@@ -91,6 +91,24 @@ class TestLegendConfig:
 class TestGVICalculator:
     """测试 GVI 计算模块"""
 
+    def test_resize_to_max_short_side(self):
+        """测试统一的短边缩放规则"""
+        from modules.gvi_calculator import resize_to_max_short_side
+
+        wide_image = Image.new("RGB", (4000, 2000))
+        resized_wide = resize_to_max_short_side(wide_image)
+        assert resized_wide.size == (768, 384)
+
+        tall_image = Image.new("RGB", (2000, 4000))
+        resized_tall = resize_to_max_short_side(tall_image)
+        assert resized_tall.size == (384, 768)
+
+        small_image = Image.new("RGB", (800, 600))
+        assert resize_to_max_short_side(small_image, max_short_side=1024).size == (
+            800,
+            600,
+        )
+
     def test_model_loading(self):
         """测试模型加载"""
         from modules.gvi_calculator import get_models

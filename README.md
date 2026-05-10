@@ -1,6 +1,6 @@
 # SimpleGVI - 绿视指数计算工具
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 SimpleGVI 是一个简化版的绿视指数 (Green View Index, GVI) 计算工具，使用 Facebook 的 Mask2Former 模型进行语义分割，计算图像中植被区域的占比。
@@ -66,6 +66,15 @@ uv run streamlit run app.py --server.port 8501
 - **CLI**: `results/` 目录下生成结果文件和分割图
 - **批量处理**: `gvi_results.csv` 包含所有图像的 GVI 结果
 - **Web UI**: 实时显示结果，支持 CSV 导出
+- **分割可视化**: 输出三段竖向拼接图，依次为显示图、50% 透明分割叠加图、纯分割图
+
+## 图像处理策略
+
+- 普通图和全景图都会先修正 EXIF 方向。
+- 全景图会先裁剪底部 20%，用于减少全景地面畸变。
+- 分割计算使用短边最大 384px 的图像，降低 Mask2Former 后处理显存占用。
+- 可视化底图使用短边最大 1024px 的图像，避免输出图过大，同时保留较清晰的底图。
+- 分割标签按 ADE20K 类别连通块生成：连通块太小不标注，连通块越大标签字号越大。
 
 ---
 
@@ -79,12 +88,13 @@ uv run streamlit run app.py --server.port 8501
 
 ---
 
-## 依赖
+## 主要依赖
 
 - torch
 - transformers
 - pillow
 - numpy
+- scipy
 - pandas
 - streamlit
 
@@ -104,7 +114,7 @@ uv run main.py examples/03_dense_forest.jpg -s
 加载语义分割模型...
 处理图像：examples/03_dense_forest.jpg
 绿视指数 (GVI): 1.0000
-分割可视化结果已保存到：results/03_dense_forest_segmentation.png
+分割结果已保存: results/03_dense_forest_segmentation.png
 处理完成!
 ```
 

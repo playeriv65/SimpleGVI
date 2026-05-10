@@ -2,6 +2,7 @@ import os
 import platform
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from scipy import ndimage
 import torch
 from modules.legend_config import (
     get_ade20k_color_palette,
@@ -11,6 +12,8 @@ from config.settings import ADE20K_CLASS_INFO, ADE20K_VEGETATION_CLASSES
 
 ADE20K_COLOR_PALETTE = get_ade20k_color_palette()
 VEGETATION_CLASS_IDS = ADE20K_VEGETATION_CLASSES
+LABEL_PAD_X = 4
+LABEL_PAD_Y = 3
 
 
 def _get_system_fonts():
@@ -127,15 +130,17 @@ def _text_bbox(draw, xy, text, font):
     return (x, y, x + width, y + height)
 
 
-def _draw_label(draw, text, center, font, image_size):
-    """Draw a compact label centered at the given point."""
+def _text_metrics(draw, text, font):
+    bbox = _text_bbox(draw, (0, 0), text, font)
+    return bbox, bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def _label_box(
+    draw, text, center, font, image_size, pad_x=LABEL_PAD_X, pad_y=LABEL_PAD_Y
+):
     width, height = image_size
     x, y = center
-    bbox = _text_bbox(draw, (0, 0), text, font)
-    text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
-    pad_x = 4
-    pad_y = 2
+    bbox, text_w, text_h = _text_metrics(draw, text, font)
 
     left = int(round(x - text_w / 2 - pad_x))
     top = int(round(y - text_h / 2 - pad_y))
@@ -147,14 +152,24 @@ def _draw_label(draw, text, center, font, image_size):
     right = left + text_w + pad_x * 2
     bottom = top + text_h + pad_y * 2
 
+    return bbox, (left, top, right, bottom)
+
+
+def _draw_label(draw, text, center, font, image_size):
+    """Draw a compact label centered at the given point."""
+    bbox, label_box = _label_box(draw, text, center, font, image_size)
+    left, top, right, bottom = label_box
+
     draw.rounded_rectangle(
-        [left, top, right, bottom],
+        label_box,
         radius=2,
         fill=(0, 0, 0, 155),
         outline=(255, 255, 255, 170),
         width=1,
     )
-    draw.text((left + pad_x, top + pad_y - 1), text, fill=(255, 255, 255, 245), font=font)
+    text_x = left + LABEL_PAD_X - bbox[0]
+    text_y = top + LABEL_PAD_Y - bbox[1]
+    draw.text((text_x, text_y), text, fill=(255, 255, 255, 245), font=font)
     return (left, top, right, bottom)
 
 
@@ -167,7 +182,42 @@ def _boxes_overlap(a, b, margin=4):
     )
 
 
-def _annotate_segmentation(seg_image, segmentation, min_area_ratio=0.003, max_labels=18):
+def _choose_component_font(
+    draw,
+    text,
+    component_area,
+    component_box,
+    image_height,
+    min_component_label_area_ratio,
+):
+    min_font_size = 11
+    max_font_size = max(min_font_size, min(42, int(np.sqrt(component_area) / 14)))
+    y0, x0, y1, x1 = component_box
+    component_w = x1 - x0
+    component_h = y1 - y0
+
+    for font_size in range(max_font_size, min_font_size - 1, -1):
+        font = _load_font(font_size)
+        _, text_w, text_h = _text_metrics(draw, text, font)
+        label_w = text_w + LABEL_PAD_X * 2
+        label_h = text_h + LABEL_PAD_Y * 2
+        label_area = label_w * label_h
+        if component_area < label_area * min_component_label_area_ratio:
+            continue
+        if component_w < label_w * 1.1 or component_h < label_h * 1.1:
+            continue
+        return font
+
+    return None
+
+
+def _annotate_segmentation(
+    seg_image,
+    segmentation,
+    min_area_ratio=0.0002,
+    max_labels=24,
+    min_component_label_area_ratio=8,
+):
     """Overlay ADE20K class labels on the largest visible regions."""
     if isinstance(segmentation, torch.Tensor):
         segmentation = segmentation.cpu().numpy()
@@ -181,30 +231,56 @@ def _annotate_segmentation(seg_image, segmentation, min_area_ratio=0.003, max_la
 
     overlay = Image.new("RGBA", seg_image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
-    font = _load_font(13)
 
     total_pixels = segmentation.size
     min_area = max(80, int(total_pixels * min_area_ratio))
     labels = []
 
-    class_ids, counts = np.unique(segmentation, return_counts=True)
-    for class_id, count in zip(class_ids.tolist(), counts.tolist()):
-        if count < min_area or class_id not in ADE20K_CLASS_INFO:
+    class_ids = np.unique(segmentation)
+    structure = np.ones((3, 3), dtype=np.uint8)
+    for class_id in class_ids.tolist():
+        if class_id not in ADE20K_CLASS_INFO:
             continue
 
-        ys, xs = np.nonzero(segmentation == class_id)
-        if len(xs) == 0:
+        mask = segmentation == class_id
+        labeled_components, component_count = ndimage.label(mask, structure=structure)
+        if component_count == 0:
             continue
 
-        # Median point is usually inside the dominant region and resists thin masks.
-        labels.append(
-            {
-                "area": count,
-                "name": ADE20K_CLASS_INFO[class_id]["name"],
-                "x": float(np.median(xs)),
-                "y": float(np.median(ys)),
-            }
-        )
+        component_slices = ndimage.find_objects(labeled_components)
+        for component_id, component_slice in enumerate(component_slices, start=1):
+            if component_slice is None:
+                continue
+
+            y_slice, x_slice = component_slice
+            component_mask = labeled_components[component_slice] == component_id
+            component_area = int(component_mask.sum())
+            if component_area < min_area:
+                continue
+
+            name = ADE20K_CLASS_INFO[class_id]["name"]
+            component_box = (y_slice.start, x_slice.start, y_slice.stop, x_slice.stop)
+            font = _choose_component_font(
+                draw,
+                name,
+                component_area,
+                component_box,
+                seg_image.height,
+                min_component_label_area_ratio,
+            )
+            if font is None:
+                continue
+
+            ys, xs = np.nonzero(component_mask)
+            labels.append(
+                {
+                    "area": component_area,
+                    "name": name,
+                    "font": font,
+                    "x": float(np.median(xs + x_slice.start)),
+                    "y": float(np.median(ys + y_slice.start)),
+                }
+            )
 
     labels.sort(key=lambda item: item["area"], reverse=True)
     placed_boxes = []
@@ -212,20 +288,24 @@ def _annotate_segmentation(seg_image, segmentation, min_area_ratio=0.003, max_la
         if len(placed_boxes) >= max_labels:
             break
 
-        bbox = _text_bbox(draw, (0, 0), item["name"], font)
-        text_w = bbox[2] - bbox[0] + 8
-        text_h = bbox[3] - bbox[1] + 4
-        candidate = (
-            int(item["x"] - text_w / 2),
-            int(item["y"] - text_h / 2),
-            int(item["x"] + text_w / 2),
-            int(item["y"] + text_h / 2),
+        _, candidate = _label_box(
+            draw,
+            item["name"],
+            (item["x"], item["y"]),
+            item["font"],
+            seg_image.size,
         )
         if any(_boxes_overlap(candidate, placed) for placed in placed_boxes):
             continue
 
         placed_boxes.append(
-            _draw_label(draw, item["name"], (item["x"], item["y"]), font, seg_image.size)
+            _draw_label(
+                draw,
+                item["name"],
+                (item["x"], item["y"]),
+                item["font"],
+                seg_image.size,
+            )
         )
 
     return Image.alpha_composite(seg_image.convert("RGBA"), overlay).convert("RGB")
@@ -240,10 +320,10 @@ def save_segmentation_visualization(image_source, segmentation, gvi, output_path
     """
     保存分割可视化结果
 
-    将原始图像、50% 透明分割叠加图、语义分割结果上下拼接显示。
+    将显示图像、50% 透明分割叠加图、语义分割结果上下拼接显示。
 
     Args:
-        image_source (str or PIL.Image.Image): 原始图像路径或预处理后的图像
+        image_source (str or PIL.Image.Image): 显示图像路径或 PIL 图像
         segmentation (torch.Tensor or np.ndarray): 分割结果（类别ID数组）
         gvi (float): 绿视指数值 (0-1)
         output_path (str): 输出图像保存路径

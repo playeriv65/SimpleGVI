@@ -7,7 +7,6 @@ import torch
 import warnings
 from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation
 from PIL import Image, ImageOps
-import numpy as np
 from config.settings import ADE20K_VEGETATION_CLASSES
 
 warnings.filterwarnings(
@@ -19,11 +18,11 @@ warnings.filterwarnings(
 # 配置常量
 # ============================================================
 # 图像尺寸限制
-MAX_IMAGE_SIZE = 1024  # 最大边长 (像素)
+SEGMENTATION_SHORT_SIDE = 384  # 分割图短边最大边长 (像素)
+DISPLAY_SHORT_SIDE = 1024  # 展示图短边最大边长 (像素)
 MIN_IMAGE_SIZE = 1  # 最小边长 (避免 resize 到 0)
 # 全景图像处理
 PANORAMIC_BOTTOM_CROP_RATIO = 0.2  # 裁剪底部 20% (移除地面畸变区域)
-PANORAMIC_TARGET_WIDTH = 1024  # 全景图处理时统一压缩到的宽度
 
 
 def get_models():
@@ -93,42 +92,59 @@ def calculate_gvi(segmentation):
     return vegetation_pixels / total_pixels if total_pixels else 0
 
 
-def process_panoramic_image(image, processor, model):
+def resize_to_max_short_side(image, max_short_side=SEGMENTATION_SHORT_SIDE):
+    """
+    等比例缩小图像，使短边不超过指定尺寸。
+
+    只在短边超过限制时压缩，不放大小图。
+    """
+    width, height = image.size
+    short_side = min(width, height)
+
+    if short_side <= max_short_side:
+        return image
+
+    scale = max_short_side / short_side
+    new_width = max(MIN_IMAGE_SIZE, int(width * scale))
+    new_height = max(MIN_IMAGE_SIZE, int(height * scale))
+    return image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+
+def process_panoramic_image(
+    image, processor, model, max_short_side=SEGMENTATION_SHORT_SIDE
+):
     """
     处理全景图像
     
-    全景图像通常在底部有畸变；处理时只裁剪底部区域，
-    然后将宽度压缩到 1024px 以内以降低显存占用。
+    全景图像通常在底部有畸变；先裁剪底部区域，
+    展示图按短边 1024px 输出，分割图按短边 384px 计算。
     
     Args:
         image: PIL Image 对象
         processor: 图像处理器
         model: 分割模型
+        max_short_side: 分割图短边最大边长
     
     Returns:
-        tuple: (gvi, segmentation, image) GVI 值、分割结果和预处理后的图像
+        tuple: (gvi, segmentation, image) GVI 值、分割结果和展示图像
     """
     width, height = image.size
 
     # 裁剪底部 20% (全景图像地面畸变校正)
     bottom_crop = int(height * PANORAMIC_BOTTOM_CROP_RATIO)
     image = image.crop((0, 0, width, height - bottom_crop))
-    width, height = image.size
+    display_image = resize_to_max_short_side(image, DISPLAY_SHORT_SIDE)
+    segmentation_image = resize_to_max_short_side(image, max_short_side)
 
-    if width > PANORAMIC_TARGET_WIDTH:
-        scale = PANORAMIC_TARGET_WIDTH / width
-        new_height = max(MIN_IMAGE_SIZE, int(height * scale))
-        image = image.resize(
-            (PANORAMIC_TARGET_WIDTH, new_height), Image.Resampling.LANCZOS
-        )
-
-    segmentation = segment_image(image, processor, model)
+    segmentation = segment_image(segmentation_image, processor, model)
     gvi = calculate_gvi(segmentation)
 
-    return gvi, segmentation, image
+    return gvi, segmentation, display_image
 
 
-def process_image(image_path, is_panoramic, processor, model, max_size=MAX_IMAGE_SIZE):
+def process_image(
+    image_path, is_panoramic, processor, model, max_short_side=SEGMENTATION_SHORT_SIDE
+):
     """
     处理图像并计算绿视指数
     
@@ -137,10 +153,10 @@ def process_image(image_path, is_panoramic, processor, model, max_size=MAX_IMAGE
         is_panoramic: 是否为全景图像
         processor: 图像处理器
         model: 分割模型
-        max_size: 最大边长限制，默认 1024px（避免显存溢出）
+        max_short_side: 分割图短边最大边长，默认 384px（避免显存溢出）
     
     Returns:
-        tuple: (gvi, segmentation, resized_image) - GVI 值、分割结果、处理后的图像
+        tuple: (gvi, segmentation, display_image) - GVI 值、分割结果、展示图像
     
     Raises:
         FileNotFoundError: 图像文件不存在
@@ -151,22 +167,16 @@ def process_image(image_path, is_panoramic, processor, model, max_size=MAX_IMAGE
     # 🔧 修复 EXIF 方向问题 - 自动纠正手机照片的旋转
     image = ImageOps.exif_transpose(image)
     
-    # 自动调整过大图像尺寸 - 长边最大 max_size px
-    width, height = image.size
-    max_dimension = max(width, height)
-    
-    if not is_panoramic and max_dimension > max_size:
-        scale = max_size / max_dimension
-        # 确保最小尺寸为 1，避免整数截断导致 0 尺寸
-        new_width = max(MIN_IMAGE_SIZE, int(width * scale))
-        new_height = max(MIN_IMAGE_SIZE, int(height * scale))
-        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    
     if is_panoramic:
-        gvi, segmentation, image = process_panoramic_image(image, processor, model)
+        gvi, segmentation, image = process_panoramic_image(
+            image, processor, model, max_short_side
+        )
     else:
-        segmentation = segment_image(image, processor, model)
+        display_image = resize_to_max_short_side(image, DISPLAY_SHORT_SIDE)
+        segmentation_image = resize_to_max_short_side(image, max_short_side)
+        segmentation = segment_image(segmentation_image, processor, model)
         gvi = calculate_gvi(segmentation)
+        image = display_image
     
     # 返回处理后的图像（用于显示）
     return gvi, segmentation, image

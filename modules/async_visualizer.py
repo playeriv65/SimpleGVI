@@ -48,7 +48,7 @@ class AsyncVisualizer:
         
         Args:
             func: 可视化函数
-            image_source: 原始图像路径或预处理后的图像
+            image_source: 显示图像路径或 PIL 图像
             segmentation: 分割结果
             gvi: GVI值
             output_path: 输出路径

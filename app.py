@@ -460,7 +460,7 @@ def render_unified_interface(processor, model):
 
         img_cols = st.columns(3, gap="small")
         with img_cols[0]:
-            st.image(img_data["original"], caption="原图", use_container_width=True)
+            st.image(img_data["original"], caption="显示图", use_container_width=True)
         with img_cols[1]:
             st.image(
                 blended, caption=f"叠加 {opacity * 100:.0f}%", use_container_width=True
