@@ -29,8 +29,10 @@ uv pip install -r requirements.txt
 uv run main.py examples/03_dense_forest.jpg --save_segmentation
 
 # 批量处理文件夹
-uv run batch_process.py path/to/images/ --save_segmentation
+uv run batch_process.py path/to/images/ --save_segmentation --batch-size 2
 ```
+
+PowerShell 5.1 不支持 `&&` 作为命令分隔符；需要连续执行多条命令时请使用 `;`。
 
 #### Python API
 
@@ -64,7 +66,7 @@ uv run streamlit run app.py --server.port 8501
 ## 输出结果
 
 - **CLI**: `results/` 目录下生成结果文件和分割图
-- **批量处理**: `gvi_results.csv` 包含所有图像的 GVI 结果
+- **批量处理**: `gvi_results.csv` 包含每张图像的 `tree_GVI`、`grass_GVI`、`plant_GVI`、`flower_GVI`、`palm_GVI` 和总 `GVI`
 - **Web UI**: 实时显示结果，支持 CSV 导出
 - **分割可视化**: 输出三段竖向拼接图，依次为显示图、50% 透明分割叠加图、纯分割图
 
@@ -73,6 +75,8 @@ uv run streamlit run app.py --server.port 8501
 - 普通图和全景图都会先修正 EXIF 方向。
 - 全景图会先裁剪底部 20%，用于减少全景地面畸变。
 - 分割计算使用短边最大 384px 的图像，降低 Mask2Former 后处理显存占用。
+- 批处理只加载一份模型，`--batch-size` 控制单次送入 GPU/CPU 推理的图像数量。
+- 保存分割图时使用有背压的异步写图队列，避免 CPU 可视化阻塞 GPU 推理，同时限制内存积压。
 - 可视化底图使用短边最大 1024px 的图像，避免输出图过大，同时保留较清晰的底图。
 - 分割标签按 ADE20K 类别连通块生成：连通块太小不标注，连通块越大标签字号越大。
 

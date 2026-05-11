@@ -1,5 +1,6 @@
 import os
 import argparse
+from modules.cli_utils import configure_utf8_output
 from modules.gvi_calculator import process_image, get_models
 
 BANNER = """
@@ -24,9 +25,10 @@ USAGE_EXAMPLES = """
   main.py panorama.jpg -p
 """
 
-
 def main():
     """计算图像的绿视指数 (Green View Index, GVI)"""
+    configure_utf8_output()
+
     parser = argparse.ArgumentParser(
         description="计算图像的绿视指数 (Green View Index, GVI)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -59,7 +61,7 @@ def main():
 
     if not os.path.exists(args.image_path):
         print(f"错误: 图像文件 '{args.image_path}' 不存在")
-        return
+        raise SystemExit(1)
 
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)

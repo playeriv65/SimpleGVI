@@ -24,8 +24,8 @@ uv run main.py examples/02_urban_park.jpg --save_segmentation
 uv run main.py examples/05_panoramic.jpg --is_panoramic --save_segmentation
 
 # 批量处理
-uv run batch_process.py examples/ --save_segmentation
+uv run batch_process.py examples/ --save_segmentation --batch-size 2
 ```
 
-结果默认输出到 `results/` 目录；批量处理会额外生成 `gvi_results.csv`。
+结果默认输出到 `results/` 目录；批量处理会额外生成 `gvi_results.csv`，其中包含 5 个植被类别 GVI 和总 GVI。
 保存分割结果时会输出三段竖向拼接图：显示图、50% 透明分割叠加图、纯分割图。

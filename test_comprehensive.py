@@ -145,6 +145,29 @@ class TestGVICalculator:
         except Exception as e:
             pytest.skip(f"图像处理失败: {e}")
 
+    def test_calculate_vegetation_class_gvi(self):
+        """测试按植被类别统计 GVI"""
+        import torch
+        from modules.gvi_calculator import calculate_gvi, calculate_vegetation_class_gvi
+
+        segmentation = torch.tensor(
+            [
+                [4, 4, 9, 0],
+                [17, 66, 72, 1],
+            ]
+        )
+
+        class_gvi = calculate_vegetation_class_gvi(segmentation)
+
+        assert class_gvi == {
+            "tree_GVI": 0.25,
+            "grass_GVI": 0.125,
+            "plant_GVI": 0.125,
+            "flower_GVI": 0.125,
+            "palm_GVI": 0.125,
+        }
+        assert calculate_gvi(segmentation) == sum(class_gvi.values())
+
 
 class TestVisualization:
     """测试可视化模块"""

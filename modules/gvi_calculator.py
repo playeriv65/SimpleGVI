@@ -7,7 +7,10 @@ import torch
 import warnings
 from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation
 from PIL import Image, ImageOps
-from config.settings import ADE20K_VEGETATION_CLASSES
+from config.settings import (
+    ADE20K_CLASS_INFO,
+    ADE20K_VEGETATION_CLASSES,
+)
 
 warnings.filterwarnings(
     "ignore",
@@ -73,6 +76,32 @@ def segment_image(image, processor, model):
     return segmentation
 
 
+def segment_images(images, processor, model):
+    """
+    Batch segment multiple PIL images with one loaded model.
+
+    Returns:
+        list[torch.Tensor]: CPU segmentation tensors, one per input image.
+    """
+    if not images:
+        return []
+
+    inputs = processor(images=images, return_tensors="pt")
+    device = next(model.parameters()).device
+
+    with torch.no_grad():
+        if device.type == "cuda":
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+
+        outputs = model(**inputs)
+        segmentations = processor.post_process_semantic_segmentation(
+            outputs,
+            target_sizes=[image.size[::-1] for image in images],
+        )
+
+    return [segmentation.to("cpu") for segmentation in segmentations]
+
+
 def calculate_gvi(segmentation):
     """
     计算分割图像的绿视指数 (GVI)
@@ -90,6 +119,50 @@ def calculate_gvi(segmentation):
         vegetation_pixels += (segmentation == veg_class).sum().item()
 
     return vegetation_pixels / total_pixels if total_pixels else 0
+
+
+def calculate_vegetation_class_gvi(segmentation):
+    """
+    计算每个植被类别各自占整张分割图的比例。
+
+    Returns:
+        dict: 例如 {"tree_GVI": 0.1, "grass_GVI": 0.2, ...}
+    """
+    total_pixels = segmentation.numel()
+    class_gvi = {}
+
+    for class_id in sorted(ADE20K_VEGETATION_CLASSES):
+        class_name = ADE20K_CLASS_INFO[class_id]["name"]
+        column_name = f"{class_name}_GVI"
+        pixels = (segmentation == class_id).sum().item()
+        class_gvi[column_name] = pixels / total_pixels if total_pixels else 0
+
+    return class_gvi
+
+
+def prepare_image_for_processing(
+    image_path,
+    is_panoramic,
+    max_short_side=SEGMENTATION_SHORT_SIDE,
+):
+    """
+    Load and resize one image for display and segmentation.
+
+    Returns:
+        tuple: (display_image, segmentation_image)
+    """
+    with Image.open(image_path) as img:
+        image = ImageOps.exif_transpose(img).copy()
+
+    if is_panoramic:
+        width, height = image.size
+        bottom_crop = int(height * PANORAMIC_BOTTOM_CROP_RATIO)
+        image = image.crop((0, 0, width, height - bottom_crop))
+
+    display_image = resize_to_max_short_side(image, DISPLAY_SHORT_SIDE)
+    segmentation_image = resize_to_max_short_side(image, max_short_side)
+
+    return display_image, segmentation_image
 
 
 def resize_to_max_short_side(image, max_short_side=SEGMENTATION_SHORT_SIDE):
@@ -162,21 +235,13 @@ def process_image(
         FileNotFoundError: 图像文件不存在
         PIL.UnidentifiedImageError: 无法识别的图像格式
     """
-    image = Image.open(image_path)
-    
-    # 🔧 修复 EXIF 方向问题 - 自动纠正手机照片的旋转
-    image = ImageOps.exif_transpose(image)
-    
-    if is_panoramic:
-        gvi, segmentation, image = process_panoramic_image(
-            image, processor, model, max_short_side
-        )
-    else:
-        display_image = resize_to_max_short_side(image, DISPLAY_SHORT_SIDE)
-        segmentation_image = resize_to_max_short_side(image, max_short_side)
-        segmentation = segment_image(segmentation_image, processor, model)
-        gvi = calculate_gvi(segmentation)
-        image = display_image
+    image, segmentation_image = prepare_image_for_processing(
+        image_path,
+        is_panoramic,
+        max_short_side,
+    )
+    segmentation = segment_image(segmentation_image, processor, model)
+    gvi = calculate_gvi(segmentation)
     
     # 返回处理后的图像（用于显示）
     return gvi, segmentation, image
